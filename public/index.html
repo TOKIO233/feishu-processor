@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>飞书文档处理工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        input[type="url"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="url"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button {
+            width: 100%;
+            padding: 14px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        
+        .progress {
+            margin: 20px 0;
+            padding: 16px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .progress.active {
+            display: block;
+        }
+
+        .progress-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .progress-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .status {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 12px;
+        }
+
+        .status.idle { background: #ddd; }
+        .status.processing { background: #ffa500; animation: pulse 1s infinite; }
+        .status.success { background: #28a745; }
+        .status.error { background: #dc3545; }
+
+        .progress-text {
+            flex: 1;
+            color: #555;
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .result.active {
+            display: block;
+        }
+
+        .result.success {
+            border-left: 4px solid #28a745;
+        }
+
+        .result.error {
+            border-left: 4px solid #dc3545;
+        }
+
+        .result h3 {
+            margin-bottom: 12px;
+            color: #333;
+        }
+
+        .result p {
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .result a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .result a:hover {
+            text-decoration: underline;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 飞书文档处理工具</h1>
+
+        <div class="input-group">
+            <label for="url">飞书文档URL</label>
+            <input
+                type="url"
+                id="url"
+                placeholder="https://feishu.cn/docx/..."
+                autocomplete="off"
+            >
+        </div>
+
+        
+        <button class="button" id="processBtn" onclick="startProcessing()">
+            开始处理
+        </button>
+
+        <div class="progress" id="progress">
+            <div class="progress-item">
+                <div class="status idle" id="downloadStatus"></div>
+                <div class="progress-text" id="downloadText">等待开始...</div>
+            </div>
+            <div class="progress-item">
+                <div class="status idle" id="imageStatus"></div>
+                <div class="progress-text" id="imageText">等待下载完成...</div>
+            </div>
+        </div>
+
+        <div class="result" id="result">
+            <h3 id="resultTitle">处理完成</h3>
+            <p id="resultMessage"></p>
+            <p id="resultFiles"></p>
+        </div>
+    </div>
+
+    <script>
+        function startProcessing() {
+            const url = document.getElementById('url').value.trim();
+            const btn = document.getElementById('processBtn');
+            const progress = document.getElementById('progress');
+            const result = document.getElementById('result');
+
+            if (!url) {
+                showMessage('请输入飞书文档URL', 'error');
+                return;
+            }
+
+            // 验证URL格式
+            if (!url.includes('feishu.cn')) {
+                showMessage('请输入有效的飞书文档URL', 'error');
+                return;
+            }
+
+            // 禁用按钮，显示进度
+            btn.disabled = true;
+            btn.textContent = '处理中...';
+            progress.classList.add('active');
+            result.classList.remove('active');
+
+            // 重置状态
+            resetProgress();
+
+            // 开始处理
+            processDocument(url);
+        }
+
+        async function processDocument(url) {
+            try {
+                // 使用完整处理API
+                updateStatus('download', 'processing', '正在下载飞书文档...');
+                updateStatus('image', 'processing', '准备处理图片...');
+
+                const requestBody = { url };
+
+                const response = await fetch('/api/process', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.details || errorData.error || '处理失败');
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    updateStatus('download', 'success', '✓ 文档下载完成');
+                    updateStatus('image', 'success', `✓ 图片处理完成: ${data.upload.successCount}张上传成功`);
+
+                    showSuccessResult(data);
+                } else {
+                    throw new Error(data.error || '处理失败');
+                }
+
+            } catch (error) {
+                console.error('处理失败:', error);
+                updateStatus('download', 'error', '✗ 处理失败');
+                updateStatus('image', 'error', '');
+                showErrorResult(error.message);
+            } finally {
+                // 恢复按钮
+                const btn = document.getElementById('processBtn');
+                btn.disabled = false;
+                btn.textContent = '开始处理';
+            }
+        }
+
+        function updateStatus(type, status, text) {
+            const statusEl = document.getElementById(`${type}Status`);
+            const textEl = document.getElementById(`${type}Text`);
+
+            statusEl.className = `status ${status}`;
+            textEl.textContent = text;
+        }
+
+        function resetProgress() {
+            updateStatus('download', 'idle', '等待开始...');
+            updateStatus('image', 'idle', '等待下载完成...');
+        }
+
+        function showMessage(message, type) {
+            const result = document.getElementById('result');
+            const title = document.getElementById('resultTitle');
+            const messageEl = document.getElementById('resultMessage');
+
+            result.className = `result active ${type}`;
+            title.textContent = type === 'error' ? '❌ 错误' : '✓ 提示';
+            messageEl.textContent = message;
+            document.getElementById('resultFiles').textContent = '';
+        }
+
+        function showSuccessResult(data) {
+            const result = document.getElementById('result');
+            const title = document.getElementById('resultTitle');
+            const messageEl = document.getElementById('resultMessage');
+            const filesEl = document.getElementById('resultFiles');
+
+            result.className = 'result active success';
+            title.textContent = '🎉 处理完成';
+
+            if (data.upload) {
+                messageEl.textContent = `成功处理 ${data.upload.totalImages}张图片，其中${data.upload.successCount}张上传成功。`;
+
+                filesEl.innerHTML = `输出文件: <strong>${data.upload.newFileName}</strong>`;
+            } else {
+                messageEl.textContent = '文档处理完成';
+                filesEl.innerHTML = '';
+            }
+        }
+
+        function showErrorResult(message) {
+            showMessage(message, 'error');
+        }
+
+        // 页面加载完成后的初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 自动聚焦到URL输入框
+            document.getElementById('url').focus();
+
+            // 支持回车键提交
+            document.getElementById('url').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    startProcessing();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
