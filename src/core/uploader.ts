@@ -9,11 +9,12 @@ export class ImageUploader {
     this.adapters = adapters.filter(adapter => adapter.isConfigured());
 
     if (this.adapters.length === 0) {
-      throw new Error('没有可用的图床服务，请检查配置');
+      Logger.warning('没有配置图床服务，将跳过图片上传功能');
+      Logger.info('文档将正常处理，但不会上传图片');
+    } else {
+      // 记录已配置的图床服务
+      Logger.info(`已配置的图床服务: ${this.adapters.map(a => a.name).join(', ')}`);
     }
-
-    // 记录已配置的图床服务
-    Logger.info(`已配置的图床服务: ${this.adapters.map(a => a.name).join(', ')}`);
   }
 
   async uploadImages(imagePaths: string[]): Promise<UploadResult[]> {

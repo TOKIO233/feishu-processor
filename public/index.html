@@ -85,6 +85,20 @@
             cursor: not-allowed;
         }
 
+        .button.secondary {
+            background: #6c757d;
+            font-size: 14px;
+            padding: 10px 16px;
+            margin-left: 10px;
+            width: auto;
+        }
+
+        .button.secondary:hover:not(:disabled) {
+            background: #5a6268;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
+        }
+
         
         .progress {
             margin: 20px 0;
@@ -231,6 +245,7 @@
             btn.disabled = true;
             btn.textContent = '处理中...';
             progress.classList.add('active');
+            // 清除之前的错误状态
             result.classList.remove('active');
 
             // 重置状态
@@ -242,34 +257,73 @@
 
         async function processDocument(url) {
             try {
-                // 使用完整处理API
+                // 第一步：下载文档
                 updateStatus('download', 'processing', '正在下载飞书文档...');
-                updateStatus('image', 'processing', '准备处理图片...');
+                updateStatus('image', 'idle', '等待下载完成...');
 
-                const requestBody = { url };
-
-                const response = await fetch('/api/process', {
+                const downloadResponse = await fetch('/api/download', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(requestBody)
+                    body: JSON.stringify({ url })
                 });
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.details || errorData.error || '处理失败');
+                if (!downloadResponse.ok) {
+                    const errorData = await downloadResponse.json();
+                    throw new Error(errorData.details || errorData.error || '下载失败');
                 }
 
-                const data = await response.json();
+                const downloadData = await downloadResponse.json();
 
-                if (data.success) {
+                if (downloadData.success) {
+                    // 下载完成，立即显示成功状态
                     updateStatus('download', 'success', '✓ 文档下载完成');
-                    updateStatus('image', 'success', `✓ 图片处理完成: ${data.upload.successCount}张上传成功`);
+                    console.log('✅ 文档下载完成:', downloadData.filePath);
 
-                    showSuccessResult(data);
+                    // 第二步：处理图片上传
+                    updateStatus('image', 'processing', '正在处理图片上传...');
+
+                    const uploadResponse = await fetch('/api/upload', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            filePath: downloadData.filePath,
+                            outputDir: null // 使用默认输出目录
+                        })
+                    });
+
+                    if (!uploadResponse.ok) {
+                        const errorData = await uploadResponse.json();
+                        throw new Error('图片上传失败: ' + (errorData.details || errorData.error));
+                    }
+
+                    const uploadData = await uploadResponse.json();
+
+                    if (uploadData.success) {
+                        // 图片处理成功
+                        if (uploadData.successCount > 0) {
+                            updateStatus('image', 'success', `✓ 图片处理完成: ${uploadData.successCount}张上传成功`);
+                        } else if (uploadData.totalImages > 0) {
+                            updateStatus('image', 'error', '✗ 图片上传失败');
+                        } else {
+                            updateStatus('image', 'success', '✓ 无需处理图片');
+                        }
+
+                        // 显示最终成功结果，合并下载和上传的结果
+                        const finalResult = {
+                            success: true,
+                            download: downloadData,
+                            upload: uploadData
+                        };
+                        showSuccessResult(finalResult);
+                    } else {
+                        throw new Error('图片处理失败');
+                    }
                 } else {
-                    throw new Error(data.error || '处理失败');
+                    throw new Error(downloadData.error || '下载失败');
                 }
 
             } catch (error) {
@@ -298,15 +352,35 @@
             updateStatus('image', 'idle', '等待下载完成...');
         }
 
-        function showMessage(message, type) {
+        function showMessage(message, type, autoClear = false) {
             const result = document.getElementById('result');
             const title = document.getElementById('resultTitle');
             const messageEl = document.getElementById('resultMessage');
 
             result.className = `result active ${type}`;
-            title.textContent = type === 'error' ? '❌ 错误' : '✓ 提示';
+
+            if (type === 'error') {
+                title.textContent = '❌ 错误';
+            } else if (type === 'success') {
+                title.textContent = '✅ 成功';
+            } else if (type === 'info') {
+                title.textContent = 'ℹ️ 信息';
+            } else {
+                title.textContent = '✓ 提示';
+            }
+
             messageEl.textContent = message;
             document.getElementById('resultFiles').textContent = '';
+
+            // 对于非错误类型的消息，设置自动清除（3秒后）
+            if (autoClear && type !== 'error') {
+                setTimeout(() => {
+                    // 只有在没有新的错误消息时才清除
+                    if (!result.classList.contains('error')) {
+                        result.classList.remove('active');
+                    }
+                }, 3000);
+            }
         }
 
         function showSuccessResult(data) {
@@ -321,7 +395,40 @@
             if (data.upload) {
                 messageEl.textContent = `成功处理 ${data.upload.totalImages}张图片，其中${data.upload.successCount}张上传成功。`;
 
-                filesEl.innerHTML = `输出文件: <strong>${data.upload.newFileName}</strong>`;
+                // 创建可点击的文件链接和复制按钮
+                let fileDisplay = '';
+
+                // 检查是否有处理结果（说明文档已处理）
+                if (data.upload && data.upload.outputPath) {
+                    // 获取处理后的输出文件路径
+                    const absolutePath = data.upload.outputPath;
+                    const fileName = data.upload.newFileName || absolutePath.split(/[\\\/]/).pop();
+
+                    // 对路径进行转义处理，防止JavaScript字符串中的反斜杠问题
+                const escapedPath = absolutePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                const displayPath = absolutePath.replace(/\\/g, '/');
+
+                fileDisplay = `
+                        <div style="margin-bottom: 10px;">
+                            <strong>输出文件: </strong>
+                            <span style="color: #667eea; text-decoration: none; font-weight: 500; margin-right: 10px; cursor: pointer;"
+                                  onclick="copyFilePath('${escapedPath}')"
+                                  onmouseover="this.style.textDecoration='underline'"
+                                  onmouseout="this.style.textDecoration='none'">
+                                📄 ${fileName}
+                            </span>
+                            <button class="button secondary" onclick="copyToClipboard('${escapedPath}', '${fileName}')">📋 复制内容</button>
+                        </div>
+                        <div style="font-size: 14px; color: #666; margin-top: 5px;">
+                            💡 提示：点击文件名复制文件路径，点击复制按钮复制文件内容
+                        </div>
+                    `;
+                } else {
+                    // 只有文件名，但文件不存在时，不显示复制按钮
+                    fileDisplay = `输出文件: <strong>${data.upload.newFileName || '处理完成'}</strong>`;
+                }
+
+                filesEl.innerHTML = fileDisplay;
             } else {
                 messageEl.textContent = '文档处理完成';
                 filesEl.innerHTML = '';
@@ -330,6 +437,133 @@
 
         function showErrorResult(message) {
             showMessage(message, 'error');
+        }
+
+        // 显示复制成功的临时提示（不改变原界面）
+        function showCopySuccessMessage(message) {
+            // 创建临时的成功提示元素
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #28a745;
+                color: white;
+                padding: 12px 20px;
+                border-radius: 6px;
+                box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+                font-size: 14px;
+                font-weight: 500;
+                z-index: 10000;
+                opacity: 0;
+                transition: opacity 0.3s ease;
+                max-width: 300px;
+            `;
+            toast.textContent = message;
+
+            // 添加到页面
+            document.body.appendChild(toast);
+
+            // 显示动画
+            setTimeout(() => {
+                toast.style.opacity = '1';
+            }, 100);
+
+            // 2秒后消失
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => {
+                    if (document.body.contains(toast)) {
+                        document.body.removeChild(toast);
+                    }
+                }, 300);
+            }, 2000);
+        }
+
+        // 复制文件路径到剪贴板
+        async function copyFilePath(filePath) {
+            try {
+                // 验证文件路径
+                if (!filePath) {
+                    throw new Error('文件路径为空');
+                }
+
+                // 转换路径格式用于显示
+                const normalizedPath = filePath.replace(/\\\\/g, '\\').replace(/\\'/g, "'");
+
+                // 复制到剪贴板
+                await navigator.clipboard.writeText(normalizedPath);
+
+                // 显示临时的成功提示
+                showCopySuccessMessage('✅ 文件路径已复制到剪贴板！');
+                console.log('✅ 文件路径已复制到剪贴板');
+
+            } catch (error) {
+                console.error('复制路径失败:', error);
+
+                // 只显示简单的错误提示，不改变原界面
+                if (error.name === 'NotAllowedError') {
+                    alert('❌ 剪贴板访问被拒绝，请手动复制文件路径');
+                } else {
+                    alert('❌ 复制路径失败: ' + error.message);
+                }
+            }
+        }
+
+        // 复制文件内容到剪贴板
+        async function copyToClipboard(filePath, fileName) {
+            try {
+                // 验证文件路径
+                if (!filePath) {
+                    throw new Error('文件路径为空');
+                }
+
+                console.log('尝试复制文件:', filePath, fileName); // 调试信息
+
+                // 调用后端API读取文件
+                const response = await fetch('/api/read-file', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ filePath })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || '读取文件失败');
+                }
+
+                const { content } = await response.json();
+
+                // 复制到剪贴板
+                await navigator.clipboard.writeText(content);
+
+                // 显示临时的成功提示
+                showCopySuccessMessage('✅ 文件内容已复制到剪贴板！');
+                console.log(`✅ ${fileName} 的内容已复制到剪贴板`);
+
+            } catch (error) {
+                console.error('复制失败:', error);
+                console.error('文件路径:', filePath); // 调试信息
+
+                // 只显示简单的错误提示，不改变原界面
+                if (error.name === 'NotAllowedError') {
+                    alert('❌ 剪贴板访问被拒绝，请手动复制文件内容');
+                } else if (error.message.includes('文件不存在')) {
+                    alert('❌ 复制失败: 文件不存在，请确保文档处理成功后再尝试复制');
+                } else {
+                    alert('❌ 复制失败: ' + error.message);
+                }
+            }
+        }
+
+    
+        // 导入编辑器（简化版 - 打开编辑器页面）
+        function importToEditor(filePath, fileName) {
+            // 打开doocs/md编辑器
+            window.open('http://127.0.0.1:8800/', '_blank');
+            showMessage('📝 已打开 doocs/md 编辑器，请使用"复制到剪贴板"功能获取内容', 'info');
         }
 
         // 页面加载完成后的初始化

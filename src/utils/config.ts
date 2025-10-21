@@ -53,8 +53,8 @@ export function validateConfig(config: Config): boolean {
     const aliyunEnabled = config.imageHosts.aliyun?.enabled;
 
     if (!wechatEnabled && !aliyunEnabled) {
-      Logger.error('请至少启用一个图床服务（微信公众号或阿里云OSS）');
-      return false;
+      Logger.warning('未启用图床服务，将仅复制文档内容不上传图片');
+      return true; // 允许无图床配置继续工作
     }
 
     // 验证微信配置
