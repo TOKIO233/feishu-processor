@@ -35,3 +35,6 @@ Thumbs.db
 # 临时文件
 *.tmp
 *.temp
+
+# 工作流配置
+.spec-workflow/
