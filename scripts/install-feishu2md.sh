@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALL_ROOT="${ROOT_DIR}/tools/feishu2md"
+DEFAULT_VERSION="v2.4.5"
 
 os_raw="$(uname -s | tr '[:upper:]' '[:lower:]')"
 arch_raw="$(uname -m)"
@@ -54,6 +55,9 @@ if [[ -z "${version}" ]]; then
   elif [[ -n "${installed_version}" ]]; then
     version="${installed_version}"
     echo "当前无法访问 GitHub，改用已安装版本 ${version}。"
+  else
+    version="${DEFAULT_VERSION}"
+    echo "当前无法访问 GitHub，改用内置默认版本 ${version}。"
   fi
 fi
 
@@ -71,7 +75,11 @@ mkdir -p "${install_dir}"
 if [[ ! -x "${install_dir}/feishu2md" ]]; then
   trap 'rm -f "${tmp_archive}"' EXIT
   echo "正在安装 feishu2md ${version}（${os}/${arch}）..."
-  curl -fL "${download_url}" -o "${tmp_archive}"
+  if ! curl -fL "${download_url}" -o "${tmp_archive}"; then
+    echo "下载 feishu2md 失败，请检查网络或手动安装后重试。"
+    echo "预期下载地址：${download_url}"
+    exit 1
+  fi
   tar -xzf "${tmp_archive}" -C "${install_dir}"
   chmod +x "${install_dir}/feishu2md"
 else
