@@ -1,0 +1,27 @@
+{
+  "imageHosts": {
+    "wechat": {
+      "enabled": false,
+      "appId": "your_app_id_here",
+      "appSecret": "your_app_secret_here",
+      "apiBaseUrl": "https://api.weixin.qq.com/cgi-bin"
+    },
+    "aliyun": {
+      "enabled": false,
+      "region": "oss-cn-hangzhou",
+      "accessKeyId": "your_access_key_id_here",
+      "accessKeySecret": "your_access_key_secret_here",
+      "bucket": "your_bucket_name_here",
+      "endpoint": "your_endpoint_here"
+    }
+  },
+  "upload": {
+    "maxConcurrency": 5,
+    "retryCount": 3,
+    "timeout": 30000
+  },
+  "output": {
+    "backupOriginal": false,
+    "replaceStrategy": "replace"
+  }
+}
